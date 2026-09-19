@@ -21,8 +21,8 @@ def simulate_cansat_3d(x_start, y_start, z_start, x_target, y_target, initial_he
     x, y, z = x_start, y_start, z_start
     heading = initial_heading
 
-    step_size = 10    # Horizontal speed (m/s)
-    descent_rate = 5 + random.random()    # Vertical sink rate (m/s)
+    step_size = 2    # Horizontal speed (m/s)
+    descent_rate = 20 + random.random()    # Vertical sink rate (m/s)
 
     # Tracking arrays for 3D plotting
     x_history = [x]

@@ -4,4 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.1",
+    "numpy>=2.4.6",
+    "scipy>=1.17.1",
+    "solid-angle-utils>=0.1.2",
+]
