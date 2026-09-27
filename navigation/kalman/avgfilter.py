@@ -9,6 +9,7 @@ from alt_vals import emit
 PATH = "../data/stress_csv.csv"
 RATE = 10
 
+# normal filter
 k , avg_values= emit(PATH,RATE)
 t = [i / RATE for i in range(len(k))]
 plt.figure(figsize=(9, 5))
