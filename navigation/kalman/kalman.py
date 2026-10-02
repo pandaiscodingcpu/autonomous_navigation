@@ -1,27 +1,29 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 class Kalman:
     def __init__(self,dT):
         # static process noise Q
         self.dT = 1 / dT
-        self.Q = np.array([[0.1,0],
-                           [0,0.1]])
+        self.Q = np.array([[0.01,0],
+                           [0,0.01]])
         # static measurement noise H
         self.H = np.array([[1,0]])
         # state to transition matrix
         self.A = np.array([[1,self.dT],
                            [0,1]])
         # noise level
-        self.R = np.array([[100]]) # more value. less trust on sensor readings
+        self.R = np.array([[10000]]) # more value. less trust on sensor readings
         self.Xk = np.array([[0],
                             [0]]) # initialization
         # covariance matrix
         self.P = np.eye(2,2) * 500
         self.I = np.eye(2,2)
-
+    def init_state(self, x0):
+        self.Xk = np.array([[x0], [0.0]])
     def predict(self):
         self.Xk = self.A @ self.Xk
         self.P = (self.A @ self.P @ self.A.T) + self.Q
@@ -37,21 +39,21 @@ class Kalman:
         self.Xk = self.Xk + (K @ y)
         # update P
         self.P = (self.I - K @ self.H) @ self.P
-        return self.Xk
+        #print(self.Xk)
+        return self.Xk  #[position,velocity]
 
 
 class Demo:
     def __init__(self,rate):
         self.rate = rate
-    def multiplot(self):
+    def multiplot(self,filename,column):
         kf = Kalman(self.rate)  # rate
         filtered_alt = []
         filtered_vel = []
-
-        df = pd.read_csv('../data/stress_csv.csv')
+        df = pd.read_csv(f'../data/{filename}')
         # purposely adding noise
-        df[' ALTITUDE'] = df[' ALTITUDE'] + np.random.normal(0, 10, len(df))
-        raw_alt_values = list(df[' ALTITUDE'])
+        df[column] = df[column] + np.random.normal(0, 10, len(df))
+        raw_alt_values = list(df[column])
         for i in range(len(df)):
             z = np.array([[raw_alt_values[i]]])  # current measurement
             kf.predict()
@@ -101,6 +103,32 @@ class Demo:
         plt.savefig(f'kalman_vel_{self.rate}_smoothed_out.png', dpi=150)
         plt.show()
 
+    # return the available datasets (Helper function) 
+    def list_datasets(self,data_dir: Path = Path(__file__).resolve().parent.parent / "data") -> list[str]:
+        return sorted(f.name for f in data_dir.iterdir() if f.is_file())
+
+
 if __name__ == '__main__':
-    d = Demo(rate=100) # eg. 10Hz
-    d.multiplot()
+    d = Demo(rate=100) # eg. 100Hz
+    filename = ""
+    column = ""
+    print("Select the dataset")
+    datasets = list(d.list_datasets())
+    for f in datasets:
+        print(f)
+    choice = int(input())
+    if choice == 1:
+        filename = datasets[0]
+        df = pd.read_csv(f"../data/{filename}")
+        cols = df.columns
+        print("Enter the column name:")
+        print(cols)
+        column = str(input())
+    else:
+        filename = datasets[1]
+        df = pd.read_csv(f"../data/{filename}")
+        cols = df.columns
+        print("Enter the column name:")
+        print(cols)
+        column = str(input())
+    d.multiplot(filename,column)
