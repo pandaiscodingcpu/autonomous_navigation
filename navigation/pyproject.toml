@@ -9,6 +9,8 @@ dependencies = [
     "mujoco>=3.15.0",
     "numpy>=2.4.6",
     "pandas>=3.0.6",
+    "pyserial>=3.5",
     "scipy>=1.17.1",
+    "serial>=0.0.97",
     "solid-angle-utils>=0.1.2",
 ]
