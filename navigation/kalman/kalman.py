@@ -42,7 +42,6 @@ class Kalman:
         #print(self.Xk)
         return self.Xk  #[position,velocity]
 
-
 class Demo:
     def __init__(self,rate):
         self.rate = rate

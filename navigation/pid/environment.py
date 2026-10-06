@@ -7,16 +7,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 DT = 0.1
-ALTITUDE = 650
+ALTITUDE = 600
 TARGET = (0, 0)
 
-MONTE_CARLO_RUNS = 500
+MONTE_CARLO_RUNS = 1000
 
 ZONE_LENGTH = 61
 ZONE_WIDTH = 12.2
 
-GLIDE_RATIO = 1.4
-DESCENT_RATE_MEAN = 5
+GLIDE_RATIO = 5
+DESCENT_RATE_MEAN = 6.0
 
 MAX_TURN = math.radians(70)
 

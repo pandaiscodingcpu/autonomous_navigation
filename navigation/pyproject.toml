@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3.11.1",
+    "mujoco>=3.15.0",
     "numpy>=2.4.6",
     "pandas>=3.0.6",
     "scipy>=1.17.1",
