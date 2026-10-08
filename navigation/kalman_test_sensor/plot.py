@@ -1,101 +1,99 @@
+import sys
+import time
+import collections
 import serial
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from collections import deque
 
-# --- Configuration ---
-# Update this to match your Arduino's COM port (e.g., 'COM3', 'COM4')
-SERIAL_PORT = 'COM9' 
+COM_PORT = 'COM14'
 BAUD_RATE = 115200
-MAX_POINTS = 200  # Number of data points to keep on the screen at once
+MAX_SAMPLES = 60  # Displays last 60 seconds of data
 
-# --- Data Storage ---
-# deques act as sliding windows; they automatically drop old data when full
-t_data = deque(maxlen=MAX_POINTS)
-raw_alt_data = deque(maxlen=MAX_POINTS)
-filt_alt_data = deque(maxlen=MAX_POINTS)
-filt_vel_data = deque(maxlen=MAX_POINTS)
+# Buffers for time, raw, and filtered values
+time_buf = collections.deque(maxlen=MAX_SAMPLES)
+raw_gyr_buf = collections.deque(maxlen=MAX_SAMPLES)
+filt_gyr_buf = collections.deque(maxlen=MAX_SAMPLES)
+raw_acc_buf = collections.deque(maxlen=MAX_SAMPLES)
+filt_acc_buf = collections.deque(maxlen=MAX_SAMPLES)
 
-# Initialize Serial Connection
+start_time = time.time()
+
+# Connect to Serial
 try:
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
-    print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
-except Exception as e:
-    print(f"Error opening serial port: {e}")
-    exit()
+    ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
+    time.sleep(2)
+    print(f"Connected to {COM_PORT} at {BAUD_RATE} baud.")
+except serial.SerialException as e:
+    print(f"\n[ERROR] Access Denied or Port Error on {COM_PORT}: {e}")
+    print("Ensure the Arduino Serial Monitor / Serial Plotter is closed!\n")
+    sys.exit(1)
 
-# --- Figure Setup ---
-fig, (ax_alt, ax_vel) = plt.subplots(2, 1, figsize=(10, 8))
-fig.suptitle('Live 1D Kalman Filter Telemetry')
+plt.style.use('dark_background')
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
+fig.canvas.manager.set_window_title("ICM-20948: Raw vs. Kalman Filter Comparison")
 
-# Altitude Plot Lines
-line_raw_alt, = ax_alt.plot([], [], label='Noisy Altitude', color='red', alpha=0.5)
-line_filt_alt, = ax_alt.plot([], [], label='Filtered Altitude', color='blue', linewidth=2)
-ax_alt.set_title('Altitude')
-ax_alt.set_ylabel('Meters')
-ax_alt.legend(loc='upper right')
+# Gyroscope Plots
+line_raw_gyr, = ax1.plot([], [], 'r:', alpha=0.6, linewidth=1.5, marker='o', markersize=3, label='Noisy Raw Gyro X')
+line_filt_gyr, = ax1.plot([], [], '#00FF00', linewidth=2.5, label='Kalman Filtered Gyro X')
+ax1.set_ylabel('Gyro X (deg/s)')
+ax1.set_title('Gyroscope X Axis (100 Hz Filtered, 1 Hz Output)')
+ax1.grid(True, linestyle='--', alpha=0.3)
+ax1.legend(loc='upper right')
 
-# Velocity Plot Line
-line_filt_vel, = ax_vel.plot([], [], label='Filtered Velocity', color='green', linewidth=2)
-ax_vel.set_title('Velocity (dx/dt)')
-ax_vel.set_xlabel('Samples')
-ax_vel.set_ylabel('Meters / Second')
-ax_vel.legend(loc='upper right')
+# Accelerometer Plots
+line_raw_acc, = ax2.plot([], [], 'm:', alpha=0.6, linewidth=1.5, marker='o', markersize=3, label='Noisy Raw Accel Z')
+line_filt_acc, = ax2.plot([], [], '#00E5FF', linewidth=2.5, label='Kalman Filtered Accel Z')
+ax2.set_xlabel('Time (s)')
+ax2.set_ylabel('Accel Z (mg)')
+ax2.set_title('Accelerometer Z Axis (100 Hz Filtered, 1 Hz Output)')
+ax2.grid(True, linestyle='--', alpha=0.3)
+ax2.legend(loc='upper right')
 
-plt.tight_layout()
-
-sample_count = 0
-
-def update_plot(frame):
-    global sample_count
-    
-    # Read all available lines from the serial buffer
-    while ser.in_waiting:
+def update(frame):
+    while ser.in_waiting > 0:
         try:
-            line = ser.readline().decode('utf-8').strip()
-            if not line:
-                continue
-                
-            # Parse the comma-separated values: raw_alt, filt_alt, filt_vel
-            data = line.split(',')
-            if len(data) == 3:
-                raw_alt = float(data[0])
-                filt_alt = float(data[1])
-                filt_vel = float(data[2])
-                
-                t_data.append(sample_count)
-                raw_alt_data.append(raw_alt)
-                filt_alt_data.append(filt_alt)
-                filt_vel_data.append(filt_vel)
-                
-                sample_count += 1
-        except (ValueError, UnicodeDecodeError):
-            # Ignore garbled serial lines that often happen on startup
+            line = ser.readline().decode('utf-8', errors='ignore').strip()
+            # Expecting: RawGyrX:val,FiltGyrX:val,RawAccZ:val,FiltAccZ:val
+            parts = dict(item.split(':') for item in line.split(','))
+
+            rgx = float(parts['RawGyrX'])
+            fgx = float(parts['FiltGyrX'])
+            raz = float(parts['RawAccZ'])
+            faz = float(parts['FiltAccZ'])
+
+            curr_t = time.time() - start_time
+
+            time_buf.append(curr_t)
+            raw_gyr_buf.append(rgx)
+            filt_gyr_buf.append(fgx)
+            raw_acc_buf.append(raz)
+            filt_acc_buf.append(faz)
+        except Exception:
             pass
 
-    # Update plot data if we have collected points
-    if len(t_data) > 0:
-        line_raw_alt.set_data(t_data, raw_alt_data)
-        line_filt_alt.set_data(t_data, filt_alt_data)
-        line_filt_vel.set_data(t_data, filt_vel_data)
-        
-        # Dynamically adjust the X-axis to scroll with the data
-        ax_alt.set_xlim(t_data[0], t_data[-1])
-        ax_vel.set_xlim(t_data[0], t_data[-1])
-        
-        # Dynamically adjust the Y-axis based on current window min/max
-        ax_alt.set_ylim(min(min(raw_alt_data), min(filt_alt_data)) - 2, 
-                        max(max(raw_alt_data), max(filt_alt_data)) + 2)
-        ax_vel.set_ylim(min(filt_vel_data) - 1, max(filt_vel_data) + 1)
+    if len(time_buf) > 0:
+        t_data = list(time_buf)
 
-    return line_raw_alt, line_filt_alt, line_filt_vel
+        line_raw_gyr.set_data(t_data, list(raw_gyr_buf))
+        line_filt_gyr.set_data(t_data, list(filt_gyr_buf))
 
-# Run the animation loop at a 50ms interval to match the 50Hz sensor rate
-ani = animation.FuncAnimation(fig, update_plot, interval=50, blit=False, cache_frame_data=False)
+        line_raw_acc.set_data(t_data, list(raw_acc_buf))
+        line_filt_acc.set_data(t_data, list(filt_acc_buf))
 
-try:
-    plt.show()
-except KeyboardInterrupt:
-    print("Plotting stopped.")
-finally:
+        ax1.set_xlim(min(t_data), max(t_data) + 1.0)
+        ax2.set_xlim(min(t_data), max(t_data) + 1.0)
+
+        ax1.relim()
+        ax1.autoscale_view(scalex=False, scaley=True)
+        ax2.relim()
+        ax2.autoscale_view(scalex=False, scaley=True)
+
+    return line_raw_gyr, line_filt_gyr, line_raw_acc, line_filt_acc
+
+ani = animation.FuncAnimation(fig, update, interval=200, blit=False, cache_frame_data=False)
+
+plt.tight_layout()
+plt.show()
+
+if ser.is_open:
     ser.close()

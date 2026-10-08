@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 def lpf(alpha, rate):
-    df = pd.read_csv("../data/stress_csv.csv")
+    df = pd.read_csv(".../data/stress_csv.csv")
     df[" ALTITUDE"] = df[" ALTITUDE"] + np.random.normal(0, 10, len(df))
     alt = list(df[" ALTITUDE"])
     filtered = []

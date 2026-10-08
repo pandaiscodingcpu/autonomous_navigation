@@ -1,47 +1,104 @@
 #include <Wire.h>
-#include <Adafruit_ICM20X.h>
-#include <Adafruit_ICM20948.h>
-#include <Adafruit_Sensor.h>
+#include <ICM_20948.h> // SparkFun ICM-20948 Library
 
-Adafruit_ICM20948 icm;
+#define AD0_VAL 1 // 0 if AD0 -> GND (0x68), 1 if AD0 -> 3.3V (0x69)
+
+ICM_20948_I2C myICM;
+
+// ==========================================
+// 1D KALMAN FILTER CLASS
+// ==========================================
+class KalmanFilter1D {
+  private:
+    float q; // Process noise covariance
+    float r; // Measurement noise covariance
+    float p; // Estimation error covariance
+    float x; // State estimate
+
+  public:
+    KalmanFilter1D(float process_noise = 0.01, float measurement_noise = 2.0, float est_error = 1.0, float init_val = 0.0) {
+      q = process_noise;
+      r = measurement_noise;
+      p = est_error;
+      x = init_val;
+    }
+
+    float update(float measurement) {
+      p = p + q;
+      float k = p / (p + r);
+      x = x + k * (measurement - x);
+      p = (1.0f - k) * p;
+      return x;
+    }
+
+    float getState() { return x; }
+};
+
+// Filters tuned for 100 Hz sampling rate
+KalmanFilter1D kfGyrX(0.01, 10.0);
+KalmanFilter1D kfAccZ(0.01, 100.0);
+
+// Latest raw values stored during 100Hz sampling
+float rawGyrX = 0.0;
+float rawAccZ = 0.0;
+
+// Timing variables
+unsigned long lastSampleTime = 0;
+unsigned long lastPrintTime = 0;
+
+const unsigned long SAMPLE_INTERVAL = 10;   // 10 ms = 100 Hz sampling
+const unsigned long PRINT_INTERVAL  = 1000;  // 1000 ms = 1 Hz output
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial)
-    delay(10);
+  while (!Serial);
 
-  Serial.println("ICM20948 Gyro Yaw Test");
+  Wire.begin();
+  Wire.setClock(400000); // 400kHz fast I2C bus
 
-  // Initialize the sensor on the I2C bus
-  if (!icm.begin_I2C()) {
-    Serial.println("Failed to find ICM20948 chip. Check wiring or I2C address.");
-    while (1) {
-      delay(10);
+  bool initialized = false;
+  while (!initialized) {
+    myICM.begin(Wire, AD0_VAL);
+
+    if (myICM.status != ICM_20948_Stat_Ok) {
+      Serial.print(F("ICM-20948 initialization failed! Status: "));
+      Serial.println(myICM.statusString(myICM.status));
+      delay(1000);
+    } else {
+      initialized = true;
     }
   }
-  Serial.println("ICM20948 Found!");
 
-  // Configure the gyro range
-  // 500 degrees/second is a good balance of sensitivity and range for a paraglider
-  icm.setGyroRange(ICM20948_GYRO_RANGE_500_DPS);
-  
-  // Set the data rate to match your 50Hz/100Hz EKF loop expectations
-  icm.setGyroRateDivisor(10); 
+  Serial.println(F("ICM-20948 Ready: 100Hz Kalman Filtering, 1Hz Serial Stream"));
 }
 
 void loop() {
-  // Create sensor event objects
-  sensors_event_t accel, gyro, temp, mag;
+  unsigned long currentMillis = millis();
 
-  // Fetch the latest readings from the sensor
-  icm.getEvent(&accel, &gyro, &temp, &mag);
+  // 1. SAMPLE & UPDATE KALMAN FILTER AT 100 Hz (Every 10 ms)
+  if (currentMillis - lastSampleTime >= SAMPLE_INTERVAL) {
+    lastSampleTime = currentMillis;
 
-  // The Adafruit library natively outputs gyro data in radians per second (rad/s).
-  // This is the exact unit required by the 'gyro_r' input in your EKF predict() step.
-  float gyro_yaw_rate = gyro.gyro.z;
+    if (myICM.dataReady()) {
+      myICM.getAGMT();
 
-  Serial.print("Yaw_Rate_rad_s:");
-  Serial.println(gyro_yaw_rate, 4); // Print with 4 decimal places for precision
+      rawGyrX = myICM.gyrX();
+      rawAccZ = myICM.accZ();
 
-  delay(20); // ~50Hz loop
+      // Update Kalman filter state continuously
+      kfGyrX.update(rawGyrX);
+      kfAccZ.update(rawAccZ);
+    }
+  }
+
+  // 2. TRANSMIT RAW + FILTERED DATA AT 1 Hz (Every 1 second)
+  if (currentMillis - lastPrintTime >= PRINT_INTERVAL) {
+    lastPrintTime = currentMillis;
+
+    // Send both RAW and FILTERED pairs for comparison
+    Serial.print("RawGyrY:");   Serial.print(rawGyrY);
+    Serial.print(",FiltGyrX:"); Serial.print(kfGyrX.getState());
+    Serial.print(",RawAccZ:");   Serial.print(rawAccZ);
+    Serial.print(",FiltAccZ:"); Serial.println(kfAccZ.getState());
+  }
 }
